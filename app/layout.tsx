@@ -10,8 +10,8 @@ import { ToasterProvider } from '@/components/toaster-provider'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Genius',
-  description: 'AI Platform for the Future',
+  title: 'Whatsorder',
+  description: 'All your orders in just one place',
 }
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
           <ModalProvider />
           <ToasterProvider />
           {children}
-          </body>
+        </body>
       </html>
     </ClerkProvider>
   )
