@@ -10,10 +10,10 @@ interface Order {
   amount_missing: string | null;
   status: string | null;
   paid_at: string | null;
-  customer: Costumer | null;
+  customer: Customer | null;
   products: Product[] | null;
 }
-interface Costumer {
+interface Customer {
   id: number | null;
   company: number | null;
   date_created: string | null;
