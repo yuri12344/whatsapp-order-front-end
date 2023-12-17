@@ -1,16 +1,17 @@
 import { MoveHorizontal } from "lucide-react";
 import React, { Dispatch, SetStateAction } from "react";
 import { Input } from "./ui/input";
-import { FilterType, Filters } from "./data-table-d";
+import { Filters } from "./data-table-d";
 import { Checkbox } from "./ui/checkbox";
 import { Badge } from "./ui/badge";
+import { ColumnTypes } from "./data-table";
 
 interface FilterRangeProps {
   filters: Filters;
   setFilters: Dispatch<SetStateAction<Filters>>;
-  filter: FilterType;
+  filter: string;
   filterName: string;
-  type?: "number" | "date";
+  type?: ColumnTypes;
 }
 
 export default function FilterRange({
@@ -30,8 +31,8 @@ export default function FilterRange({
       newValue = {
         ...filters,
         [field]: {
-          min: Math.max(Math.min(min, max), 0),
-          max: Math.max(min, max, 0),
+          min,
+          max,
         },
       };
     } else {
@@ -42,20 +43,22 @@ export default function FilterRange({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Enable/disable filter */}
       <div className="flex gap-2 items-center">
         <Checkbox
-          checked={!!filters?.[filter]}
+          checked={!!(filters as any)?.[filter]}
           onCheckedChange={(checked) => {
             console.log(checked);
             if (checked) {
-              if (type == "number") {
+              if (type == "number" || type == "currency") {
                 setFilterMinMax(filter, 0, 0);
               } else {
-                setFilterMinMax(filter, new Date(), new Date());
+                const { start, end } = handleBadgeClick("today");
+                setFilterMinMax(filter, start, end);
               }
             } else {
               setFilters((old) => {
-                delete old?.[filter];
+                delete (old as any)?.[filter];
                 return { ...old };
               });
             }
@@ -63,24 +66,26 @@ export default function FilterRange({
         />
         Filtrar por "{filterName}"
       </div>
-      {typeof filters?.[filter]?.max === "number" &&
-        typeof filters?.[filter]?.min === "number" && (
+
+      {/* If filter has number type */}
+      {typeof (filters as any)?.[filter]?.max === "number" &&
+        typeof (filters as any)?.[filter]?.min === "number" && (
           <>
-            {filters?.[filter] && (
+            {(filters as any)?.[filter] && (
               <div className="flex gap-2 w-full items-center">
                 <Input
                   type="number"
                   placeholder="Min"
                   value={
-                    (filters?.[filter]?.min as number) > 0
-                      ? (filters?.[filter]?.min as number)
+                    ((filters as any)?.[filter]?.min as number) > 0
+                      ? ((filters as any)?.[filter]?.min as number)
                       : " "
                   }
                   onChange={(e) => {
                     setFilterMinMax(
                       filter,
                       parseInt(e.target.value),
-                      filters?.[filter]?.max || 0
+                      (filters as any)?.[filter]?.max || 0
                     );
                   }}
                   className="px-2 py-1 w-full h-auto"
@@ -93,14 +98,14 @@ export default function FilterRange({
                   type="number"
                   placeholder="Max"
                   value={
-                    (filters?.[filter]?.max as number) > 0
-                      ? (filters?.[filter]?.max as number)
+                    ((filters as any)?.[filter]?.max as number) > 0
+                      ? ((filters as any)?.[filter]?.max as number)
                       : " "
                   }
                   onChange={(e) => {
                     setFilterMinMax(
                       filter,
-                      filters?.[filter]?.min || 0,
+                      (filters as any)?.[filter]?.min || 0,
                       parseInt(e.target.value)
                     );
                   }}
@@ -111,8 +116,9 @@ export default function FilterRange({
           </>
         )}
 
-      {typeof filters?.[filter]?.max === "object" &&
-        typeof filters?.[filter]?.min === "object" && (
+      {/* If filter has date type */}
+      {typeof (filters as any)?.[filter]?.max === "object" &&
+        typeof (filters as any)?.[filter]?.min === "object" && (
           <>
             <div className="flex gap-2 w-full items-center">
               <Input
@@ -120,14 +126,14 @@ export default function FilterRange({
                 placeholder="Min"
                 value={
                   formatDateToLocalInputString(
-                    filters?.[filter]?.min as Date
+                    (filters as any)?.[filter]?.min as Date
                   ) || ""
                 }
                 onChange={(e) => {
                   setFilterMinMax(
                     filter,
                     new Date(e.target.value),
-                    filters?.[filter]?.max || 0
+                    (filters as any)?.[filter]?.max || 0
                   );
                 }}
                 className="px-2 py-1 w-full h-auto"
@@ -138,13 +144,13 @@ export default function FilterRange({
                 placeholder="Max"
                 value={
                   formatDateToLocalInputString(
-                    filters?.[filter]?.max as Date
+                    (filters as any)?.[filter]?.max as Date
                   ) || ""
                 }
                 onChange={(e) => {
                   setFilterMinMax(
                     filter,
-                    filters?.[filter]?.min || 0,
+                    (filters as any)?.[filter]?.min || 0,
                     new Date(e.target.value)
                   );
                 }}
@@ -152,56 +158,29 @@ export default function FilterRange({
               />
             </div>
             <div className="flex flex-wrap gap-1">
-              <Badge
-                variant="outline"
-                onClick={() => {
-                  const { start, end } = handleBadgeClick("today");
-                  setFilterMinMax(filter, start, end);
-                }}
-                className="cursor-pointer"
-              >
-                HOJE
-              </Badge>
-              <Badge
-                variant="outline"
-                onClick={() => {
-                  const { start, end } = handleBadgeClick("week");
-                  setFilterMinMax(filter, start, end);
-                }}
-                className="cursor-pointer"
-              >
-                ESTA SEMANA
-              </Badge>
-              <Badge
-                variant="outline"
-                onClick={() => {
-                  const { start, end } = handleBadgeClick("month");
-                  setFilterMinMax(filter, start, end);
-                }}
-                className="cursor-pointer"
-              >
-                ESTE MES
-              </Badge>
-              <Badge
-                variant="outline"
-                onClick={() => {
-                  const { start, end } = handleBadgeClick("3months");
-                  setFilterMinMax(filter, start, end);
-                }}
-                className="cursor-pointer"
-              >
-                ÚLTIMOS 3 MESES
-              </Badge>
-              <Badge
-                variant="outline"
-                onClick={() => {
-                  const { start, end } = handleBadgeClick("year");
-                  setFilterMinMax(filter, start, end);
-                }}
-                className="cursor-pointer"
-              >
-                ÚLTIMO ANO
-              </Badge>
+              {timePresets.map((e) => {
+                return (
+                  <Badge
+                    key={e.value}
+                    variant={(() => {
+                      const { start, end } = handleBadgeClick(e.value);
+                      return start.getTime() ===
+                        (filters as any)?.[filter]?.min?.getTime() &&
+                        end.getTime() ===
+                          (filters as any)?.[filter]?.max?.getTime()
+                        ? "default"
+                        : "outline";
+                    })()}
+                    onClick={() => {
+                      const { start, end } = handleBadgeClick(e.value);
+                      setFilterMinMax(filter, start, end);
+                    }}
+                    className="cursor-pointer uppercase"
+                  >
+                    {e.label}
+                  </Badge>
+                );
+              })}
             </div>
           </>
         )}
@@ -216,6 +195,33 @@ const formatDateToLocalInputString = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const timePresets = [
+  {
+    label: "Hoje",
+    value: "today",
+  },
+  {
+    label: "Últimos 7 dias",
+    value: "1week",
+  },
+  {
+    label: "Esta semana",
+    value: "week",
+  },
+  {
+    label: "Este mês",
+    value: "month",
+  },
+  {
+    label: "Últimos 3 meses",
+    value: "3months",
+  },
+  {
+    label: "Este ano",
+    value: "year",
+  },
+];
+
 const handleBadgeClick = (interval: string) => {
   let start = new Date();
   let end = new Date();
@@ -229,6 +235,11 @@ const handleBadgeClick = (interval: string) => {
       start.setDate(start.getDate() - start.getDay());
       start.setHours(0, 0, 0, 0);
       end.setDate(end.getDate() + (6 - end.getDay()));
+      end.setHours(23, 59, 59, 999);
+      break;
+    case "1week":
+      start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
       end.setHours(23, 59, 59, 999);
       break;
     case "month":

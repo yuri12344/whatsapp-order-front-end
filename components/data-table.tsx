@@ -1,13 +1,8 @@
 "use client";
 
-import {
-  FilterType,
-  Filters,
-  Sorter,
-  SorterType,
-} from "@/components/data-table-d";
+import { FilterType, Filters, Sorter } from "@/components/data-table-d";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -16,11 +11,17 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-import { Order } from "@/app/(dashboard)/(routes)/orders/page";
 import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
-import { Filter, MoveDown, MoveHorizontal, MoveUp, Trash2 } from "lucide-react";
+import {
+  ClipboardType,
+  Filter,
+  MoveDown,
+  MoveUp,
+  Repeat,
+  Trash2,
+} from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import FilterRange from "./filter-range";
 import { cn } from "@/lib/utils";
@@ -37,24 +38,36 @@ import { DialogClose } from "@radix-ui/react-dialog";
 
 export interface Column {
   name: string;
-  access: SorterType;
+  access: string;
+  valueType: ColumnTypes;
 }
+
+export type ColumnTypes = "currency" | "string" | "number" | "date";
 
 interface DataTableProps {
   colums: Column[];
-  startData: Order[];
+  startData: any[];
+  options?: {
+    buttons?: string[];
+    searchText?: string;
+    setRequests?: Function;
+    defaultSorter?: Sorter;
+  };
 }
 
-export function DataTable({ colums, startData }: DataTableProps) {
-  const [data, setData] = useState<Order[]>(startData);
+export function DataTable({ colums, startData, options }: DataTableProps) {
+  const [data, setData] = useState<any[]>(startData);
+  const [selected, setSelected] = useState<number[]>([]);
   const [filters, setFilters] = useState<Filters>({});
   const [query, setQuery] = useState<string>("");
-  const [sorter, setSorter] = useState<Sorter>({
-    column: "client",
-    type: "desc",
-  });
+  const [sorter, setSorter] = useState<Sorter>(
+    options?.defaultSorter || {
+      column: "",
+      type: "asc",
+    }
+  );
 
-  function changeSorter(newSorter: SorterType) {
+  function changeSorter(newSorter: string) {
     let _sorter = { ...sorter };
     if (_sorter.column == newSorter) {
       if (_sorter.type == "asc") {
@@ -68,38 +81,48 @@ export function DataTable({ colums, startData }: DataTableProps) {
     setSorter(_sorter);
   }
 
-  function applyFilters(): Order[] {
+  function applyFilters(data: any[]): any[] {
     let filtered = [...data];
-    Object.keys(filters).forEach((e: unknown) => {
-      const min = filters[e as FilterType]?.min || 0;
-      const max = filters[e as FilterType]?.max || 0;
+    Object.keys(filters).forEach((e: string) => {
+      let min = (filters as any)[e as FilterType]?.min || 0;
+      let max = (filters as any)[e as FilterType]?.max || 0;
+      if (max === 0) max = Infinity;
+      console.log(min, max);
 
-      if (typeof min === "number" && typeof max === "number") {
-        filtered = filtered.filter(
-          (j) =>
-            (j?.[e as FilterType] as number) <= max &&
-            (j?.[e as FilterType] as number) >= min &&
-            j?.[e as FilterType]
-        );
+      const type = colums.find((n) => n.access === e)?.valueType;
+      if (type === "number" || type == "currency") {
+        filtered = filtered.filter((j) => {
+          const value = getValueByPath(j, e);
+          return (
+            (value as number) <= max &&
+            (value as number) >= min &&
+            value !== undefined
+          );
+        });
       } else {
         filtered = filtered.filter((j) => {
-          console.log(
-            (j?.[e as FilterType] as Date).toLocaleString(),
-            (j?.[e as FilterType] as Date).toLocaleString(),
-            (max as Date).toLocaleString(),
-            (min as Date).toLocaleString()
-          );
-
+          const value = getValueByPath(j, e);
           return (
-            j?.[e as FilterType] &&
-            (j?.[e as FilterType] as Date)?.getTime() <=
-              (max as Date)?.getTime() &&
-            (j?.[e as FilterType] as Date)?.getTime() >=
-              (min as Date)?.getTime()
+            value &&
+            new Date(value)?.getTime() <= (max as Date)?.getTime() &&
+            new Date(value)?.getTime() >= (min as Date)?.getTime()
           );
         });
       }
     });
+
+    filtered = filtered.filter((e) => {
+      let valid = false;
+      colums.forEach((col) => {
+        if (col.valueType === "string") {
+          const value: string = getValueByPath(e, col.access);
+          valid =
+            valid || value?.toUpperCase().includes(query?.toUpperCase() || "");
+        }
+      });
+      return valid;
+    });
+
     return filtered;
   }
 
@@ -108,27 +131,43 @@ export function DataTable({ colums, startData }: DataTableProps) {
     setData(newData);
   }
 
-  function sortOrders(a: Order, b: Order) {
+  function sortItems(a: any, b: any) {
     const prop = sorter.column;
-    const valorA =
-      typeof a?.[prop] === "string"
-        ? (a?.[prop] as string).toUpperCase()
-        : a?.[prop];
-    const valorB =
-      typeof b?.[prop] === "string"
-        ? (b?.[prop] as string).toUpperCase()
-        : b?.[prop];
+    let valueA = getValueByPath(a, prop);
+    let valueB = getValueByPath(b, prop);
 
-    if (valorA < valorB) {
-      return sorter.type === "asc" ? -1 : 1;
+    if (typeof valueA === "undefined" || typeof valueB === "undefined") {
+      return 0; // Handle undefined values
     }
-    if (valorA > valorB) {
-      return sorter.type === "desc" ? 1 : -1;
+
+    const type = colums.find((n) => n.access === sorter.column)?.valueType;
+
+    switch (type) {
+      case "string":
+        return compareStrings(valueA, valueB, sorter.type);
+      case "number":
+        return sorter.type === "asc"
+          ? parseFloat(valueA) - parseFloat(valueB)
+          : parseFloat(valueB) - parseFloat(valueA);
+      case "currency":
+        return sorter.type === "asc"
+          ? parseFloat(valueA) - parseFloat(valueB)
+          : parseFloat(valueB) - parseFloat(valueA);
+      case "date":
+        return sorter.type === "asc"
+          ? new Date(valueA).getTime() - new Date(valueB).getTime()
+          : new Date(valueB).getTime() - new Date(valueA).getTime();
+      default:
+        throw new Error(`Unknown type: ${type}`);
     }
-    return 0;
   }
 
-  const filteredData = applyFilters();
+  function compareStrings(a: string, b: string, direction: string) {
+    const result = a.localeCompare(b);
+    return direction === "asc" ? result : -result;
+  }
+
+  const filteredData = applyFilters(data).sort(sortItems);
 
   const toBRL = Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -137,15 +176,14 @@ export function DataTable({ colums, startData }: DataTableProps) {
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Delete, Search and Filters */}
       <div className="flex">
         <Dialog>
           <DialogTrigger asChild>
             <Button
               className={cn(
                 "bg-red-500 hover:bg-red-400 overflow-hidden ease-in-out duration-200 transition-all",
-                filteredData.some((e) => e.selected)
-                  ? "w-16 mr-2"
-                  : "w-0 p-[0rem]"
+                selected.length > 0 ? "w-16 mr-2" : "w-0 p-[0rem]"
               )}
             >
               <Trash2 size={18} />
@@ -184,7 +222,7 @@ export function DataTable({ colums, startData }: DataTableProps) {
           </DialogContent>
         </Dialog>
         <Input
-          placeholder="Busque por clientes, valores ou datas"
+          placeholder={options?.searchText || "Barra de pesquisa"}
           onChange={(e) => setQuery(e.currentTarget.value)}
           className="mr-2"
         />
@@ -198,74 +236,51 @@ export function DataTable({ colums, startData }: DataTableProps) {
           </PopoverTrigger>
           {/* Filtros */}
           <PopoverContent className="mr-8 flex flex-col gap-3 max-h-[50vh] overflow-auto">
-            {/* Total */}
-            <FilterRange
-              filters={filters}
-              setFilters={setFilters}
-              filter="total"
-              filterName="Total"
-            />
-
-            {/* Pago */}
-            <FilterRange
-              filters={filters}
-              setFilters={setFilters}
-              filter="paid"
-              filterName="Pago"
-            />
-
-            {/* A pagar */}
-            <FilterRange
-              filters={filters}
-              setFilters={setFilters}
-              filter="remaining"
-              filterName="A pagar"
-            />
-
-            {/* Pago em */}
-            <FilterRange
-              filters={filters}
-              setFilters={setFilters}
-              filter="paidAt"
-              filterName="Pago em"
-              type="date"
-            />
-
-            {/* Criado em */}
-            <FilterRange
-              filters={filters}
-              setFilters={setFilters}
-              filter="createdAt"
-              filterName="Criado em"
-              type="date"
-            />
+            {colums.map((col) => {
+              if (
+                col.valueType === "currency" ||
+                col.valueType === "number" ||
+                col.valueType === "date"
+              ) {
+                return (
+                  <FilterRange
+                    key={col.access}
+                    filters={filters}
+                    setFilters={setFilters}
+                    filter={col.access}
+                    filterName={col.name}
+                    type={col.valueType}
+                  />
+                );
+              }
+            })}
 
             {/* Solicitar filtrado */}
-            <Button className="w-full h-8">ENVIAR</Button>
+            {/* <Button className="w-full h-8">ENVIAR</Button> */}
           </PopoverContent>
         </Popover>
       </div>
-      <div className="rounded-md border">
+      {/* Table */}
+      <div className="rounded-md border max-h-80 overflow-y-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="overflow-hidden w-max">
                 <Checkbox
                   checked={
-                    data.length > 0 ? data.every((e) => e.selected) : false
+                    filteredData.length > 0
+                      ? filteredData.every((e) => selected.includes(e.id))
+                      : false
                   }
                   onCheckedChange={(c) => {
-                    const newData = [...data].map((e) => {
-                      let newValue = { ...e };
-                      newValue.selected = !!c;
-                      console.log(newValue);
-                      return newValue;
-                    });
-                    setData(newData);
+                    if (c) {
+                      setSelected([...filteredData].map((e) => e.id));
+                    } else {
+                      setSelected([]);
+                    }
                   }}
                 />
               </TableHead>
-
               {colums.map((col, i) => {
                 return (
                   <TableHead key={col.access} className={i > 0 ? "w-28" : ""}>
@@ -288,72 +303,126 @@ export function DataTable({ colums, startData }: DataTableProps) {
           </TableHeader>
           {filteredData.length > 0 && (
             <TableBody>
-              {filteredData
-                .filter((e) => {
-                  return (
-                    e.client.toUpperCase().includes(query.toUpperCase()) ||
-                    e.total.toString().startsWith(query) ||
-                    e.remaining.toString().startsWith(query) ||
-                    e.paid.toString().startsWith(query) ||
-                    e.paidAt
-                      .toLocaleDateString()
-                      .toUpperCase()
-                      .includes(query.toUpperCase()) ||
-                    e.createdAt
-                      .toLocaleDateString()
-                      .toUpperCase()
-                      .includes(query.toUpperCase())
-                  );
-                })
-                .sort(sortOrders)
-                .map((e, i) => {
-                  return (
-                    <TableRow key={e.id}>
-                      <TableCell>
-                        <Checkbox
-                          className="overflow-hidden"
-                          checked={e.selected}
-                          onCheckedChange={(c) => {
-                            let newData = [...data];
-                            newData[i].selected = !newData[i].selected;
-                            setData(newData);
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>{e.client}</TableCell>
-                      <TableCell className="w-28">
-                        {toBRL.format(e.total)}
-                      </TableCell>
-                      <TableCell className="w-28">
-                        {toBRL.format(e.paid)}
-                      </TableCell>
-                      <TableCell className="w-28">
-                        {toBRL.format(e.remaining)}
-                      </TableCell>
-                      <TableCell className="w-28">
-                        {e.paidAt.toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="w-28">
-                        {e.createdAt.toLocaleDateString()}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+              {filteredData.map((e, i) => {
+                return (
+                  <TableRow key={e.id}>
+                    <TableCell className="p-3">
+                      <Checkbox
+                        className="overflow-hidden"
+                        checked={selected.includes(e.id)}
+                        onCheckedChange={(c) => {
+                          if (selected.includes(e.id)) {
+                            setSelected(selected.filter((id) => id !== e.id));
+                          } else {
+                            setSelected([...selected, e.id]);
+                          }
+                        }}
+                      />
+                    </TableCell>
+                    {colums.map((j) => {
+                      if (j.valueType === "currency") {
+                        return (
+                          <TableCell
+                            key={j.access}
+                            className="w-28 p-3 whitespace-nowrap"
+                          >
+                            {toBRL.format(getValueByPath(e, j.access))}
+                          </TableCell>
+                        );
+                      } else if (j.valueType === "string") {
+                        return (
+                          <TableCell key={j.access} className=" p-3">
+                            <p className="whitespace-nowrap max-w-[10rem] overflow-hidden overflow-ellipsis">
+                              {getValueByPath(e, j.access)}
+                            </p>
+                          </TableCell>
+                        );
+                      } else if (j.valueType === "number") {
+                        return (
+                          <TableCell
+                            key={j.access}
+                            className="w-28 p-3 whitespace-nowrap"
+                          >
+                            {getValueByPath(e, j.access)}
+                          </TableCell>
+                        );
+                      } else if (j.valueType === "date") {
+                        return (
+                          <TableCell
+                            key={j.access}
+                            className="w-28 p-3 whitespace-nowrap"
+                          >
+                            {new Date(getValueByPath(e, j.access))
+                              .toLocaleString()
+                              .replace(",", " às")}
+                          </TableCell>
+                        );
+                      }
+                    })}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           )}
         </Table>
         {!(filteredData.length > 0) && (
-          <Table>
-            <TableBody>
-              <TableCell>
-                <div className="w-full h-full flex items-center justify-center">
-                  Nenhum pedido encontrado...
-                </div>
-              </TableCell>
-            </TableBody>
-          </Table>
+          <div className="w-full h-full p-4 flex items-center justify-center">
+            Nenhum resultado encontrado...
+          </div>
         )}
       </div>
+      {/* Buttons */}
+      {Object.keys(options || {}).length > 0 && (
+        <div className={cn("flex gap-2")}>
+          {options?.buttons?.includes("resume") && (
+            <Button
+              variant="outline"
+              className={cn(
+                data.some((e) => e.selected) ? "opacity-100" : "opacity-50",
+                "ease-in-out duration-200 transition-all"
+              )}
+              disabled={!data.some((e) => e.selected)}
+            >
+              <ClipboardType size={20} />
+            </Button>
+          )}
+          {options?.buttons?.includes("newRequest") && (
+            <Button
+              variant="outline"
+              className={cn(
+                data.some((e) => e.selected) ? "opacity-100" : "opacity-50",
+                "gap-2 ease-in-out duration-200 transition-all"
+              )}
+              disabled={!data.some((e) => e.selected)}
+            >
+              <Repeat size={18} />
+              SOLICITAR NOVAMENTE
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+type AnyObject = Record<string, any>;
+
+function getValueByPath(obj: AnyObject, path: string): any {
+  const keys = path.split(".");
+
+  let currentObject: AnyObject | undefined = obj;
+
+  for (const key of keys) {
+    if (
+      currentObject &&
+      typeof currentObject === "object" &&
+      key in currentObject
+    ) {
+      currentObject = currentObject[key];
+    } else {
+      return undefined; // Chave não encontrada
+    }
+  }
+
+  return currentObject;
 }

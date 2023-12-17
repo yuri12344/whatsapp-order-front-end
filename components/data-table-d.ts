@@ -1,42 +1,13 @@
-export type FilterType =
-  | "total"
-  | "remaining"
-  | "paid"
-  | "paidAt"
-  | "createdAt";
+export type FilterType = string;
 
 export interface Filters {
-  total?: {
-    min: number;
-    max: number;
-  };
-  remaining?: {
-    min: number;
-    max: number;
-  };
-  paid?: {
-    min: number;
-    max: number;
-  };
-  paidAt?: {
-    min: Date;
-    max: Date;
-  };
-  createdAt?: {
-    min: Date;
-    max: Date;
+  [key: string]: {
+    min: number | Date;
+    max: number | Date;
   };
 }
 
-export type SorterType =
-  | "client"
-  | "total"
-  | "remaining"
-  | "paid"
-  | "paidAt"
-  | "createdAt";
-
 export interface Sorter {
-  column: SorterType;
+  column: string;
   type: "asc" | "desc";
 }
